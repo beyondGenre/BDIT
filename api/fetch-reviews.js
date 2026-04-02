@@ -79,26 +79,39 @@ export default async function handler(req, res) {
 async function fetchFromOutscraper({ place_id, limit }) {
   if (!OUTSCRAPER_API_KEY) throw new Error('Outscraper API key not configured');
 
-  const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${place_id}`;
-
   const url = `https://api.app.outscraper.com/maps/reviews-v3` +
-    `?query=${encodeURIComponent(mapsUrl)}` +
+    `?query=${encodeURIComponent(place_id)}` +
     `&reviewsLimit=${limit}` +
     `&language=en` +
-    `&sort=mostRelevant`;
+    `&sort=mostRelevant` +
+    `&async=false`;
 
   const res = await fetch(url, {
-    headers: { 'X-API-KEY': OUTSCRAPER_API_KEY }
+    headers: {
+      'X-API-KEY': OUTSCRAPER_API_KEY,
+      'Content-Type': 'application/json'
+    }
   });
 
-  if (!res.ok) throw new Error(`Outscraper error: ${res.status}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Outscraper error: ${res.status} — ${errText}`);
+  }
 
   const data = await res.json();
 
-  // Outscraper wraps results in data[0].reviews_data
-  const rawReviews = data?.data?.[0]?.reviews_data || [];
+  // Handle both sync response and async task response
+  let reviewsData = [];
 
-  return rawReviews
+  if (data?.data) {
+    // Sync response — data is directly available
+    reviewsData = data.data?.[0]?.reviews_data || [];
+  } else if (data?.id) {
+    // Async task — poll for results
+    reviewsData = await pollOutscraperTask(data.id);
+  }
+
+  return reviewsData
     .filter(r => r.review_text && r.review_text.trim().length > 20)
     .map(r => ({
       author: r.author_title || 'Anonymous',
@@ -107,6 +120,32 @@ async function fetchFromOutscraper({ place_id, limit }) {
       date: r.review_datetime_utc,
       likes: r.review_likes || 0
     }));
+}
+
+async function pollOutscraperTask(taskId, maxAttempts = 10) {
+  const pollUrl = `https://api.app.outscraper.com/requests/${taskId}`;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 3000)); // wait 3s between polls
+
+    const res = await fetch(pollUrl, {
+      headers: { 'X-API-KEY': OUTSCRAPER_API_KEY }
+    });
+
+    if (!res.ok) continue;
+
+    const data = await res.json();
+
+    if (data?.status === 'Success' || data?.data) {
+      return data?.data?.[0]?.reviews_data || [];
+    }
+
+    if (data?.status === 'Failed') {
+      throw new Error(`Outscraper task failed: ${taskId}`);
+    }
+  }
+
+  return []; // timed out — return empty
 }
 
 /**
