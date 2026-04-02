@@ -79,21 +79,15 @@ export default async function handler(req, res) {
 async function fetchFromOutscraper({ place_id, limit }) {
   if (!OUTSCRAPER_API_KEY) throw new Error('Outscraper API key not configured');
 
-  // First get the CID (reviews_id) for this place_id
-  // Outscraper returns more reliable reviews when using CID format
-  const cid = await getCID(place_id);
-  const query = cid ? cid : place_id;
-  console.log('Using query:', query, '(cid:', cid, ')');
-
   const params = new URLSearchParams({
-    query,
+    query: place_id,
     reviewsLimit: String(limit),
     language: 'en',
     sort: 'mostRelevant'
   });
 
   const url = `https://api.app.outscraper.com/maps/reviews-v3?${params}`;
-  console.log('OUTSCRAPER URL:', url);
+  console.log('URL:', url);
 
   const res = await fetch(url, { headers: { 'X-API-KEY': OUTSCRAPER_API_KEY } });
   if (!res.ok) throw new Error(`Outscraper error: ${res.status}`);
@@ -101,33 +95,8 @@ async function fetchFromOutscraper({ place_id, limit }) {
   const data = await res.json();
   console.log('STATUS:', data?.status, 'ID:', data?.id);
 
-  if (data?.id) {
-    return await pollOutscraperTask(data.id);
-  }
-
+  if (data?.id) return await pollOutscraperTask(data.id);
   return extractReviews(data?.data);
-}
-
-// Get CID from place_id using Outscraper places endpoint
-async function getCID(place_id) {
-  try {
-    const params = new URLSearchParams({
-      query: place_id,
-      fields: 'cid,reviews_id',
-      async: 'false'
-    });
-    const res = await fetch(
-      `https://api.app.outscraper.com/maps/search-v3?${params}`,
-      { headers: { 'X-API-KEY': OUTSCRAPER_API_KEY } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const cid = data?.data?.[0]?.cid || data?.data?.[0]?.reviews_id;
-    console.log('Got CID:', cid);
-    return cid || null;
-  } catch {
-    return null;
-  }
 }
 
 function extractReviews(dataArr) {
@@ -139,6 +108,9 @@ function extractReviews(dataArr) {
 
   // Nested — reviews inside reviews_data
   if (first?.reviews_data?.length > 0) return first.reviews_data;
+
+  console.log('reviews count field:', first?.reviews);
+  console.log('reviews_tags:', JSON.stringify(first?.reviews_tags)?.slice(0, 200));
 
   return [];
 }
