@@ -102,6 +102,7 @@ async function fetchFromOutscraper({ place_id, limit }) {
   }
 
   const data = await res.json();
+  console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 1000));
 
   // Handle async task response — poll until done
   if (data?.id && !data?.data) {
