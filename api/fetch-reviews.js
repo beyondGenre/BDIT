@@ -82,15 +82,12 @@ async function fetchFromOutscraper({ place_id, limit }) {
   const params = new URLSearchParams({
     query: place_id,
     reviewsLimit: String(limit),
-    reviews_limit: String(limit),
-    limit: String(limit),
     language: 'en',
-    sort: 'mostRelevant',
-    async: 'false'
+    sort: 'mostRelevant'
   });
 
   const url = `https://api.app.outscraper.com/maps/reviews-v3?${params.toString()}`;
-  console.log('OUTSCRAPER URL:', url.replace(OUTSCRAPER_API_KEY, 'REDACTED'));
+  console.log('OUTSCRAPER URL:', url);
 
   const res = await fetch(url, {
     method: 'GET',
@@ -105,20 +102,19 @@ async function fetchFromOutscraper({ place_id, limit }) {
   }
 
   const data = await res.json();
-  console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 3000));
-  console.log('DATA KEYS:', Object.keys(data?.data?.[0] || {}));
-  console.log('HAS REVIEWS_DATA:', !!data?.data?.[0]?.reviews_data);
+  console.log('OUTSCRAPER STATUS:', data?.status);
+  console.log('OUTSCRAPER ID:', data?.id);
   console.log('DATA LENGTH:', data?.data?.length);
 
-  // Handle async task response — poll until done
-  if (data?.id && !data?.data) {
+  // If async task returned, poll for results
+  if (data?.id && (!data?.data || data?.status === 'Pending')) {
+    console.log('Polling for task:', data.id);
     const taskData = await pollOutscraperTask(data.id);
     return parseReviews(taskData);
   }
 
-  // Outscraper returns place object with reviews_data array inside
-  const rawData = data?.data || [];
-  const reviewsData = rawData[0]?.reviews_data || [];
+  // Sync response — reviews in reviews_data
+  const reviewsData = data?.data?.[0]?.reviews_data || [];
   console.log('REVIEWS_DATA LENGTH:', reviewsData.length);
   return parseReviews(reviewsData);
 }
@@ -135,11 +131,11 @@ function parseReviews(reviewsData) {
     }));
 }
 
-async function pollOutscraperTask(taskId, maxAttempts = 8) {
+async function pollOutscraperTask(taskId, maxAttempts = 10) {
   const pollUrl = `https://api.app.outscraper.com/requests/${taskId}`;
 
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2000));
 
     const res = await fetch(pollUrl, {
       headers: { 'X-API-KEY': OUTSCRAPER_API_KEY }
@@ -148,13 +144,15 @@ async function pollOutscraperTask(taskId, maxAttempts = 8) {
     if (!res.ok) continue;
 
     const data = await res.json();
+    console.log(`Poll attempt ${i+1} status:`, data?.status);
 
-    if (data?.data) {
-      const raw = data.data;
-      if (raw[0]?.reviews_data) return raw[0].reviews_data;
-      return raw;
+    if (data?.status === 'Success' && data?.data) {
+      const reviewsData = data.data?.[0]?.reviews_data || [];
+      console.log('Poll reviews found:', reviewsData.length);
+      return reviewsData;
     }
-    if (data?.status === 'Failed') throw new Error(`Outscraper task failed`);
+
+    if (data?.status === 'Failed') throw new Error('Outscraper task failed');
   }
 
   return [];
