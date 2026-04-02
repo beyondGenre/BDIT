@@ -79,48 +79,72 @@ export default async function handler(req, res) {
 async function fetchFromOutscraper({ place_id, limit }) {
   if (!OUTSCRAPER_API_KEY) throw new Error('Outscraper API key not configured');
 
+  // First get the CID (reviews_id) for this place_id
+  // Outscraper returns more reliable reviews when using CID format
+  const cid = await getCID(place_id);
+  const query = cid ? cid : place_id;
+  console.log('Using query:', query, '(cid:', cid, ')');
+
   const params = new URLSearchParams({
-    query: place_id,
+    query,
     reviewsLimit: String(limit),
     language: 'en',
     sort: 'mostRelevant'
   });
 
-  const url = `https://api.app.outscraper.com/maps/reviews-v3?${params.toString()}`;
+  const url = `https://api.app.outscraper.com/maps/reviews-v3?${params}`;
   console.log('OUTSCRAPER URL:', url);
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'X-API-KEY': OUTSCRAPER_API_KEY
-    }
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Outscraper error: ${res.status} — ${errText}`);
-  }
+  const res = await fetch(url, { headers: { 'X-API-KEY': OUTSCRAPER_API_KEY } });
+  if (!res.ok) throw new Error(`Outscraper error: ${res.status}`);
 
   const data = await res.json();
-  console.log('OUTSCRAPER STATUS:', data?.status);
-  console.log('OUTSCRAPER ID:', data?.id);
-  console.log('DATA LENGTH:', data?.data?.length);
+  console.log('STATUS:', data?.status, 'ID:', data?.id);
 
-  // If async task returned, poll for results
-  if (data?.id && (!data?.data || data?.status === 'Pending')) {
-    console.log('Polling for task:', data.id);
-    const taskData = await pollOutscraperTask(data.id);
-    return parseReviews(taskData);
+  if (data?.id) {
+    return await pollOutscraperTask(data.id);
   }
 
-  // Sync response — reviews in reviews_data
-  const reviewsData = data?.data?.[0]?.reviews_data || [];
-  console.log('REVIEWS_DATA LENGTH:', reviewsData.length);
-  return parseReviews(reviewsData);
+  return extractReviews(data?.data);
+}
+
+// Get CID from place_id using Outscraper places endpoint
+async function getCID(place_id) {
+  try {
+    const params = new URLSearchParams({
+      query: place_id,
+      fields: 'cid,reviews_id',
+      async: 'false'
+    });
+    const res = await fetch(
+      `https://api.app.outscraper.com/maps/search-v3?${params}`,
+      { headers: { 'X-API-KEY': OUTSCRAPER_API_KEY } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const cid = data?.data?.[0]?.cid || data?.data?.[0]?.reviews_id;
+    console.log('Got CID:', cid);
+    return cid || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractReviews(dataArr) {
+  if (!dataArr?.length) return [];
+  const first = dataArr[0];
+
+  // Flat rows — each item is a review
+  if (first?.review_text !== undefined) return dataArr;
+
+  // Nested — reviews inside reviews_data
+  if (first?.reviews_data?.length > 0) return first.reviews_data;
+
+  return [];
 }
 
 function parseReviews(reviewsData) {
-  return reviewsData
+  return (reviewsData || [])
     .filter(r => r.review_text && r.review_text.trim().length > 20)
     .map(r => ({
       author: r.author_title || 'Anonymous',
@@ -147,26 +171,10 @@ async function pollOutscraperTask(taskId, maxAttempts = 10) {
     console.log(`Poll attempt ${i+1} status:`, data?.status);
 
     if (data?.status === 'Success') {
-      console.log('Poll raw sample:', JSON.stringify(data).slice(0, 800));
-
-      // Try all possible locations for reviews
-      const d = data?.data;
-      if (!d) return [];
-
-      // Structure 1: data[0].reviews_data
-      if (d[0]?.reviews_data?.length > 0) return d[0].reviews_data;
-
-      // Structure 2: data is flat array of review objects
-      if (d[0]?.review_text) return d;
-
-      // Structure 3: data[0] is array of reviews
-      if (Array.isArray(d[0]) && d[0][0]?.review_text) return d[0];
-
-      // Structure 4: nested one level deeper
-      if (d[0]?.data?.[0]?.reviews_data) return d[0].data[0].reviews_data;
-
-      console.log('Poll data keys:', Object.keys(d[0] || {}));
-      return d[0]?.reviews_data || [];
+      console.log('Poll success, extracting reviews...');
+      const reviews = extractReviews(data?.data);
+      console.log('Reviews extracted:', reviews.length);
+      return reviews;
     }
 
     if (data?.status === 'Failed') throw new Error('Outscraper task failed');
