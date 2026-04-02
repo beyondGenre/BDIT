@@ -113,17 +113,11 @@ async function fetchFromOutscraper({ place_id, limit }) {
     return parseReviews(taskData);
   }
 
-  // Outscraper returns reviews as a flat array in data.data
-  // Each element is a review object (not nested in reviews_data)
+  // Outscraper returns place object with reviews_data array inside
   const rawData = data?.data || [];
-
-  // If first item has reviews_data, it's the nested format
-  if (rawData[0]?.reviews_data) {
-    return parseReviews(rawData[0].reviews_data);
-  }
-
-  // Otherwise each item in data.data is a review directly
-  return parseReviews(rawData);
+  const reviewsData = rawData[0]?.reviews_data || [];
+  console.log('REVIEWS_DATA LENGTH:', reviewsData.length);
+  return parseReviews(reviewsData);
 }
 
 function parseReviews(reviewsData) {
