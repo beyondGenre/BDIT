@@ -79,8 +79,10 @@ export default async function handler(req, res) {
 async function fetchFromOutscraper({ place_id, limit }) {
   if (!OUTSCRAPER_API_KEY) throw new Error('Outscraper API key not configured');
 
+  const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${place_id}`;
+
   const url = `https://api.app.outscraper.com/maps/reviews-v3` +
-    `?query=${encodeURIComponent(place_id)}` +
+    `?query=${encodeURIComponent(mapsUrl)}` +
     `&reviewsLimit=${limit}` +
     `&language=en` +
     `&sort=mostRelevant`;
