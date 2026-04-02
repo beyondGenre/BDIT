@@ -110,9 +110,17 @@ async function fetchFromOutscraper({ place_id, limit }) {
     return parseReviews(taskData);
   }
 
-  // Sync response
-  const reviewsData = data?.data?.[0]?.reviews_data || [];
-  return parseReviews(reviewsData);
+  // Outscraper returns reviews as a flat array in data.data
+  // Each element is a review object (not nested in reviews_data)
+  const rawData = data?.data || [];
+
+  // If first item has reviews_data, it's the nested format
+  if (rawData[0]?.reviews_data) {
+    return parseReviews(rawData[0].reviews_data);
+  }
+
+  // Otherwise each item in data.data is a review directly
+  return parseReviews(rawData);
 }
 
 function parseReviews(reviewsData) {
@@ -141,7 +149,11 @@ async function pollOutscraperTask(taskId, maxAttempts = 8) {
 
     const data = await res.json();
 
-    if (data?.data) return data.data?.[0]?.reviews_data || [];
+    if (data?.data) {
+      const raw = data.data;
+      if (raw[0]?.reviews_data) return raw[0].reviews_data;
+      return raw;
+    }
     if (data?.status === 'Failed') throw new Error(`Outscraper task failed`);
   }
 
