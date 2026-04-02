@@ -102,6 +102,7 @@ async function fetchFromOutscraper({ place_id, limit }) {
   }
 
   const data = await res.json();
+  console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 1000));
 
   // Handle async task response — poll until done
   if (data?.id && !data?.data) {
@@ -139,6 +140,7 @@ async function pollOutscraperTask(taskId, maxAttempts = 8) {
     if (!res.ok) continue;
 
     const data = await res.json();
+    console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 1000));
 
     if (data?.data) return data.data?.[0]?.reviews_data || [];
     if (data?.status === 'Failed') throw new Error(`Outscraper task failed`);
