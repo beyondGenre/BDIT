@@ -102,7 +102,10 @@ async function fetchFromOutscraper({ place_id, limit }) {
   }
 
   const data = await res.json();
-  console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 1000));
+  console.log('OUTSCRAPER RAW:', JSON.stringify(data).slice(0, 3000));
+  console.log('DATA KEYS:', Object.keys(data?.data?.[0] || {}));
+  console.log('HAS REVIEWS_DATA:', !!data?.data?.[0]?.reviews_data);
+  console.log('DATA LENGTH:', data?.data?.length);
 
   // Handle async task response — poll until done
   if (data?.id && !data?.data) {
