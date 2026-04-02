@@ -146,10 +146,27 @@ async function pollOutscraperTask(taskId, maxAttempts = 10) {
     const data = await res.json();
     console.log(`Poll attempt ${i+1} status:`, data?.status);
 
-    if (data?.status === 'Success' && data?.data) {
-      const reviewsData = data.data?.[0]?.reviews_data || [];
-      console.log('Poll reviews found:', reviewsData.length);
-      return reviewsData;
+    if (data?.status === 'Success') {
+      console.log('Poll raw sample:', JSON.stringify(data).slice(0, 800));
+
+      // Try all possible locations for reviews
+      const d = data?.data;
+      if (!d) return [];
+
+      // Structure 1: data[0].reviews_data
+      if (d[0]?.reviews_data?.length > 0) return d[0].reviews_data;
+
+      // Structure 2: data is flat array of review objects
+      if (d[0]?.review_text) return d;
+
+      // Structure 3: data[0] is array of reviews
+      if (Array.isArray(d[0]) && d[0][0]?.review_text) return d[0];
+
+      // Structure 4: nested one level deeper
+      if (d[0]?.data?.[0]?.reviews_data) return d[0].data[0].reviews_data;
+
+      console.log('Poll data keys:', Object.keys(d[0] || {}));
+      return d[0]?.reviews_data || [];
     }
 
     if (data?.status === 'Failed') throw new Error('Outscraper task failed');
