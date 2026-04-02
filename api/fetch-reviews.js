@@ -82,12 +82,15 @@ async function fetchFromOutscraper({ place_id, limit }) {
   const params = new URLSearchParams({
     query: place_id,
     reviewsLimit: String(limit),
+    reviews_limit: String(limit),
+    limit: String(limit),
     language: 'en',
     sort: 'mostRelevant',
     async: 'false'
   });
 
   const url = `https://api.app.outscraper.com/maps/reviews-v3?${params.toString()}`;
+  console.log('OUTSCRAPER URL:', url.replace(OUTSCRAPER_API_KEY, 'REDACTED'));
 
   const res = await fetch(url, {
     method: 'GET',
