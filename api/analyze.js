@@ -38,8 +38,8 @@ import { Redis } from '@upstash/redis';
 
 const client    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const redis     = new Redis({
-  url:   process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN
+  url:   process.env.UPSTASH_REDIS_REST_URL   || process.env.BDIT_KV_REST_API_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.BDIT_KV_REST_API_TOKEN
 });
 
 const CACHE_TTL_SECS   = 60 * 60 * 24; // 24 hours
